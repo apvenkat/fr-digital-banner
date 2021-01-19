@@ -1,0 +1,21 @@
+{
+  "name": "camera-node",
+  "version": "1.0.0",
+  "description": "",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "server": "nodemon app.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {},
+  "devDependencies": {
+    "express": "^4.17.1",
+    "node-rtsp-stream": "0.0.9",
+    "node-rtsp-stream-jsmpeg": "0.0.2",
+    "rtsp-ffmpeg": "0.0.15",
+    "socket.io": "^3.0.4",
+    "typescript": "^4.1.3"
+  }
+}

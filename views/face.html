@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="js/face-api.js"></script>
+  <script src="js/commons.js"></script>
+  <script src="js/faceDetectionControls.js"></script>
+  <script src="js/jsmpeg.min.js"></script>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.100.2/css/materialize.css">
+  <script type="text/javascript" src="https://code.jquery.com/jquery-2.1.1.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.100.2/js/materialize.min.js"></script>
+</head>
+<body>
+  <div class="navbar navbar-dark shadow-sm">
+   <div class="container-fluid">
+      <a href="#" class="navbar-brand d-flex align-items-center " >
+       <img src='/img/logo.png' width="120px" />
+      </a>
+    </div>
+  </div>
+  <div class="container-fluid">
+  
+    <div class="progress" id="loader">
+      <div class="indeterminate"></div>
+    </div>
+    <div class="row">
+      <div class="col-md-6">
+        <div style="position: relative" class="margin">
+          <canvas id="video-canvas" class="d-none"> </canvas>
+          <video onloadedmetadata="onPlay(this)" id="inputVideo" autoplay muted playsinline></video>
+          <canvas id="overlay"></canvas>
+        </div>
+      </div>
+
+      <div class="col-md-6">
+        <div class="adv pt-4">
+        <img class="adv-image" src=""  width="100%"/>
+        </div>
+        <!-- fps_meter -->
+      <div id="fps_meter" class="row side-by-side">
+        <div>
+          <label for="time">Time:</label>
+          <input disabled value="-" id="time" type="text" class="bold">
+          <label for="fps">Estimated Fps:</label>
+          <input disabled value="-" id="fps" type="text" class="bold">
+        </div>
+      </div>
+      <!-- fps_meter -->
+      <!-- male/ female -->
+      <div id="gender">
+        <p class="gender-txt"></p>
+      </div>
+      <!-- fps_meter -->
+      </div>
+    </div>
+   
+
+    <div class="row ">
+      <div class="col-md-6">
+ 
+      </div>
+
+    </div>
+
+  </body>
+
+  <script>
+    let forwardTimes = []
+    let predictedAges = []
+    let withBoxes = true
+
+    function onChangeHideBoundingBoxes(e) {
+      withBoxes = !$(e.target).prop('checked')
+    }
+
+    function updateTimeStats(timeInMs) {
+      forwardTimes = [timeInMs].concat(forwardTimes).slice(0, 30)
+      const avgTimeInMs = forwardTimes.reduce((total, t) => total + t) / forwardTimes.length
+      // let newValue = avgTimeInMs+100
+      $('#time').val(`${Math.round(avgTimeInMs)} ms`)
+      $('#fps').val(`${faceapi.utils.round(1000 / avgTimeInMs)}`)
+    }
+
+    function interpolateAgePredictions(age) {
+      predictedAges = [age].concat(predictedAges).slice(0, 30)
+      const avgPredictedAge = predictedAges.reduce((total, a) => total + a) / predictedAges.length
+      return avgPredictedAge
+    }
+
+    function checkAdv (gender, age,genderProbability) {
+      let prevAge = '', prevGender =''
+      if(gender === 'male' && genderProbability >=0.6){       
+        $('.adv-image').attr("src","/img/male_young.jpg");
+      }else if(gender === 'female' && genderProbability >=0.5){  
+        $('.adv-image').attr("src","/img/female_young.jpg"); 
+      }
+      // $('.gender-txt').text(gender)  
+    }
+
+    async function onPlay() {
+      var url = "ws://10.10.90.30:5500"
+      var canvasVideo = document.getElementById('video-canvas');
+      var stream = canvasVideo.captureStream(25); 
+      var videoEl = document.getElementById('inputVideo'); 
+      if(videoEl.paused || videoEl.ended || !isFaceDetectionModelLoaded())
+        return setTimeout(() => onPlay())
+      const options = getFaceDetectorOptions()
+
+      const ts = Date.now()
+
+      const result = await faceapi.detectSingleFace(videoEl, options)
+        .withAgeAndGender()
+
+  
+
+      if (result) {
+        const canvas = $('#overlay').get(0)
+        const dims = faceapi.matchDimensions(canvas, videoEl, true)
+
+        const resizedResult = faceapi.resizeResults(result, dims)
+        if (withBoxes) {
+          faceapi.draw.drawDetections(canvas, resizedResult)
+        }
+        const { age, gender, genderProbability } = resizedResult  
+        setTimeout(function() {
+          //your code to be executed after 1 second
+          checkAdv(gender, age,genderProbability)
+        }, 3000)      
+        //checkAdv(gender, age,genderProbability)
+        // interpolate gender predictions over last 30 frames
+        // to make the displayed age more stable
+        const interpolatedAge = interpolateAgePredictions(age)
+        new faceapi.draw.DrawTextField(
+          [
+            `${faceapi.utils.round(interpolatedAge, 0)} years`,
+            `${gender} (${faceapi.utils.round(genderProbability)})`
+          ],
+          result.detection.box.bottomLeft
+        ).draw(canvas)
+
+        setTimeout(function() {
+          //your code to be executed after 1 second
+          updateTimeStats(Date.now() - ts)
+        }, 1000)
+       
+      }
+
+      setTimeout(() => onPlay())
+    }
+
+    async function run() {
+      // load face detection and face expression recognition models
+      await changeFaceDetector(TINY_FACE_DETECTOR)
+      await faceapi.nets.ageGenderNet.load('/')
+      changeInputSize(320)
+
+      // try to access users webcam and stream the images
+      // to the video element
+      // const stream = await navigator.mediaDevices.getUserMedia({ video: {} })
+      var url = "ws://10.10.90.30:5500"
+      var canvas = document.getElementById('video-canvas');
+      var player = new JSMpeg.Player(url, {canvas: canvas});
+      
+     // $("#imgUrlInput").attr("src", canvas.toDataURL("image/png"));
+      var stream = canvas.captureStream(25); 
+    //  const videoEl = $('#imgUrlInput').get(0)
+      var videoEl = document.getElementById('inputVideo'); 
+      videoEl.srcObject = stream
+    }
+
+    function updateResults() {}
+
+    $(document).ready(function() {
+     // renderNavBar('#navbar', 'webcam_age_and_gender_recognition')
+      initFaceDetectionControls()
+      run()
+    })
+  </script>
+</body>
+</html>
